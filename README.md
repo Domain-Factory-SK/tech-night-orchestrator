@@ -30,6 +30,10 @@ mode only applies once `/mj-orchestrate` is invoked.
 See the plugin's own README for the agent roster, levels, hooks and setup:
 [plugins/mj-orchestrate/README.md](plugins/mj-orchestrate/README.md).
 
+## Slides
+
+The talk's slides: [slides/i-dont-code-i-delegate.pdf](slides/i-dont-code-i-delegate.pdf).
+
 ## License
 
 MIT
