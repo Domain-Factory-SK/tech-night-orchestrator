@@ -1,0 +1,20 @@
+{
+  "name": "mj-orchestrate",
+  "version": "1.13.1",
+  "description": "Switch a session into orchestrator mode — delegate work to a roster of worker, judge, researcher and tech-lead agents under a sized dispatch contract, with a plan gate, lens-based review and a decision protocol, instead of editing inline. Use when you want several items coordinated in parallel, or a risky change attacked before it is built; it stays off until explicitly invoked, so normal sessions are unaffected. Also runs read-only for discovery and analysis, and includes /mj-session-review to write up a session and propose memory changes (proposes only, writes nothing until approved). Also ships /mj-keep and /mj-recall to archive the current session to a local profile folder and search or resume it later (explicit only). Shows the orchestrator level and build/discover scope in an always-visible band above the prompt, in the terminal and the desktop app. Also opens a side panel that shows them and lets you switch level and scope with toggles.",
+  "author": {
+    "name": "Domain-Factory-SK"
+  },
+  "license": "MIT",
+  "commands": [
+    "./commands/"
+  ],
+  "agents": [
+    "./agents/mj-judge.md",
+    "./agents/mj-researcher.md",
+    "./agents/mj-tech-lead.md",
+    "./agents/mj-worker-dev.md",
+    "./agents/mj-worker-mech.md"
+  ],
+  "types": "./types/index.d.ts"
+}
