@@ -99,94 +99,129 @@ test('the session file wins over the global one', async ($, on) => {
   expect([...new Set(seen.reads)]).toEqual(['/home/test/.claude/.orchestrator-mode.sid-1'])
 })
 
-test('a level pick runs the namespaced command with level and scope', async ($, on) => {
-  const seen = world(on, `standard|${NOW / 1000}|discover`, [
-    { name: 'mj-orchestrate:mj-orchestrate' },
-  ])
+const valueOf = async (ui: { find: (q: { key: string }) => Promise<{ props: Record<string, unknown> } | undefined> }, key: string) =>
+  (await ui.find({ key }))?.props.value
+
+const ORDER = [
+  'strict:build', 'strict:discover', 'standard:build', 'standard:discover', 'light:build', 'light:discover', 'off',
+]
+
+test('the pane has the one combined Select with the seven options in order, and no Level, Scope or Go', async ($, on) => {
+  world(on, `standard|${NOW / 1000}|discover`, [])
 
   await start($)
 
   for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.select({ key: 'level', value: 'strict' })
+    const select = await ui.find({ key: 'mode' })
+    const options = select?.props.options as { value: string; label: string }[]
+    expect(options.map(o => o.value)).toEqual(ORDER)
+    expect(options[3]?.label).toBe('🎛 standard · 🔍 discover')
+    expect(options[6]?.label).toBe('🎛 off')
+    expect(select?.props.value).toBe('standard:discover')
+    expect(await ui.find({ key: 'level' })).toBeUndefined()
+    expect(await ui.find({ key: 'scope' })).toBeUndefined()
+    expect(await ui.find({ key: 'go' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', text: 'Go' })).toBeUndefined()
     await ui.unmount()
   }
-  expect(seen.runs).toEqual(['/mj-orchestrate:mj-orchestrate strict discover'])
 })
 
-test('a scope pick keeps the level', async ($, on) => {
-  const seen = world(on, `light|${NOW / 1000}|`, [{ name: 'mj-orchestrate' }])
+test('one pick in the pane is one namespaced command run', async ($, on) => {
+  const seen = world(on, `strict|${NOW / 1000}|build`, [{ name: 'mj-orchestrate:mj-orchestrate' }])
 
   await start($)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.select({ key: 'scope', value: 'discover' })
+  await ui.select({ key: 'mode', value: 'standard:discover' })
+  expect(seen.runs).toEqual(['/mj-orchestrate:mj-orchestrate standard discover'])
+  await ui.select({ key: 'mode', value: 'off' })
   await ui.unmount()
-  expect(seen.runs).toEqual(['/mj-orchestrate light discover'])
+  expect(seen.runs).toEqual(['/mj-orchestrate:mj-orchestrate standard discover', '/mj-orchestrate:mj-orchestrate off'])
 })
 
-test('picking off sends off alone', async ($, on) => {
-  const seen = world(on, `standard|${NOW / 1000}|discover`, [{ name: 'mj-orchestrate' }])
+test('a pick on the terminal runs the same single command', async ($, on) => {
+  const seen = world(on, `light|${NOW / 1000}|build`, [{ name: 'mj-orchestrate' }])
 
   await start($)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.select({ key: 'level', value: 'off' })
+  await ui.select({ key: 'mode', value: 'light:discover' })
   await ui.unmount()
-  expect(seen.runs).toEqual(['/mj-orchestrate off'])
+  expect(seen.runs).toEqual(['/mj-orchestrate light discover'])
 })
 
-test('with the mode off the scope control is hidden and a level pick uses the stored scope', async ($, on) => {
-  const seen = world(on, 'off|0|', [{ name: 'mj-orchestrate' }])
-
-  await start($)
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ key: 'scope' })).toBeUndefined()
-  await ui.select({ key: 'level', value: 'standard' })
-  await ui.unmount()
-  expect(seen.runs).toEqual(['/mj-orchestrate standard build'])
-})
-
-test('mobile has no Select: keyed Buttons run the command', async ($, on) => {
-  const seen = world(on, `standard|${NOW / 1000}|`, [{ name: 'mj-orchestrate:mj-orchestrate' }])
-
-  await start($)
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'mobile' })
-  await ui.press({ key: 'level-light' })
-  await ui.press({ key: 'scope-discover' })
-  await ui.press({ key: 'level-off' })
-  await ui.press({ key: 'status' })
-  await ui.unmount()
-  expect(seen.runs).toEqual([
-    '/mj-orchestrate:mj-orchestrate light build',
-    '/mj-orchestrate:mj-orchestrate light discover',
-    '/mj-orchestrate:mj-orchestrate off',
-    '/mj-orchestrate:mj-orchestrate status',
-  ])
-})
-
-test('the Status button runs status', async ($, on) => {
-  const seen = world(on, `standard|${NOW / 1000}|`, [{ name: 'mj-orchestrate' }])
+test('picking the mode in force runs nothing, stale or not', async ($, on) => {
+  const seen = world(on, `strict|${NOW / 1000 - 9 * 3600}|build`, [{ name: 'mj-orchestrate' }])
 
   await start($)
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.press({ key: 'status' })
+    await ui.select({ key: 'mode', value: 'strict:build' })
     await ui.unmount()
   }
-  expect(seen.runs).toEqual(['/mj-orchestrate status', '/mj-orchestrate status'])
+  const mobile = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  await mobile.press({ key: 'mode-strict:build' })
+  await mobile.unmount()
+  expect(seen.runs).toEqual([])
 })
 
-test('a pick whose run fails logs and puts the command in the prompt box', async ($, on) => {
+test('mobile has no Select: seven Buttons apply on press, the current one primary', async ($, on) => {
+  const seen = world(on, `standard|${NOW / 1000}|`, [{ name: 'mj-orchestrate:mj-orchestrate' }])
+
+  await start($)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect(await ui.find({ key: 'mode' })).toBeUndefined()
+  for (const value of ORDER) {
+    expect(await ui.find({ key: `mode-${value}` })).toBeDefined()
+  }
+  expect(await ui.find({ key: 'mode-standard:build' })).toMatchObject({ props: { variant: 'primary' } })
+  expect(await ui.find({ key: 'mode-light:discover' })).toMatchObject({ props: { variant: 'secondary' } })
+  await ui.press({ key: 'mode-light:discover' })
+  expect(seen.runs).toEqual(['/mj-orchestrate:mj-orchestrate light discover'])
+  expect(await ui.find({ key: 'mode-light:discover' })).toMatchObject({ props: { variant: 'primary' } })
+  expect(await ui.find({ key: 'mode-standard:build' })).toMatchObject({ props: { variant: 'secondary' } })
+  await ui.press({ key: 'mode-off' })
+  await ui.unmount()
+  expect(seen.runs).toEqual(['/mj-orchestrate:mj-orchestrate light discover', '/mj-orchestrate:mj-orchestrate off'])
+})
+
+test('a restart drops a pending pick', async ($, on) => {
+  const file = { v: `standard|${NOW / 1000}|build` }
+  world(on, file, [{ name: 'mj-orchestrate' }])
+
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.select({ key: 'mode', value: 'strict:build' })
+  expect(await valueOf(ui, 'mode')).toBe('strict:build')
+  await start($)
+  expect(await valueOf(ui, 'mode')).toBe('standard:build')
+  await ui.unmount()
+})
+
+test('there is no Status button on any surface', async ($, on) => {
+  world(on, `standard|${NOW / 1000}|`, [])
+
+  await start($)
+
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ key: 'status' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', text: 'Status' })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('a pick whose run fails logs, fills the prompt box and returns to the file value', async ($, on) => {
   const seen = world(on, `standard|${NOW / 1000}|discover`, [])
 
   await start($)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.select({ key: 'level', value: 'light' })
+  await ui.select({ key: 'mode', value: 'light:discover' })
+  expect(await valueOf(ui, 'mode')).toBe('standard:discover')
   await ui.unmount()
   expect(seen.runs).toEqual([])
   expect(seen.fills).toEqual(['/mj-orchestrate light discover'])
@@ -200,41 +235,41 @@ test('the module never writes the mode file', async ($, on) => {
 
   for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    await ui.select({ key: 'level', value: 'off' })
-    await ui.select({ key: 'scope', value: 'build' })
-    await ui.press({ key: 'status' })
+    await ui.select({ key: 'mode', value: 'off' })
+    await ui.select({ key: 'mode', value: 'strict:build' })
     await ui.unmount()
   }
   const mobile = await $.ui.mount({ ...PANE, surface: 'mobile' })
-  await mobile.press({ key: 'level-off' })
-  await mobile.press({ key: 'scope-build' })
-  await mobile.press({ key: 'status' })
+  await mobile.press({ key: 'mode-off' })
   await mobile.unmount()
   expect(seen.writes).toEqual([])
 })
 
-test('the pane opens on an interactive start and the slash command opens it again', async ($, on) => {
+test('the pane does not open on an interactive start; the slash command opens it, once per run', async ($, on) => {
   const seen = world(on, 'off|0|', [])
 
   await start($)
-  expect(seen.opens).toEqual(['mj-orchestrate'])
+  expect(seen.opens).toEqual([])
   expect(seen.registered).toEqual(['mj-orchestrate-panel'])
 
   const ran = await $.command.run({ command: 'mj-orchestrate-panel' } as never)
-  expect(seen.opens).toEqual(['mj-orchestrate', 'mj-orchestrate'])
+  expect(seen.opens).toEqual(['mj-orchestrate'])
   expect(ran.text).toMatch(/panel opened/)
 })
 
-test('an SDK-hosted start (no surface, not interactive) still opens the pane and fills it', async ($, on) => {
+test('an SDK-hosted start (no surface, not interactive) does not open the pane, which still fills once mounted', async ($, on) => {
   const seen = world(on, `strict|${NOW / 1000}|discover`, [])
 
   await $.session.start({ cwd: '/', surface: null, isInteractive: false } as never)
-  expect(seen.opens).toEqual(['mj-orchestrate'])
+  expect(seen.opens).toEqual([])
   expect(seen.registered).toEqual(['mj-orchestrate-panel'])
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: /orch strict · 🔍 discover/ })).toBeDefined()
   await ui.unmount()
+
+  await $.command.run({ command: 'mj-orchestrate-panel' } as never)
+  expect(seen.opens).toEqual(['mj-orchestrate'])
 })
 
 test('a failing panel start does not stop the band from refreshing', async ($, on) => {
@@ -252,78 +287,75 @@ test('a failing panel start does not stop the band from refreshing', async ($, o
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 9 }, view: {} } as never,
   })
-  expect(await band.find({ type: 'Text', text: /orch light · 🔨 build/ })).toBeDefined()
+  expect((await band.find({ key: 'orch-mode' }))?.props.value).toBe('light:build')
   await band.unmount()
 })
 
-test('two quick picks build on each other, and re-picking the shown value sends nothing', async ($, on) => {
+test('a repeated pick before the file changes sends nothing, on the Select and the mobile Buttons', async ($, on) => {
   const seen = world(on, `standard|${NOW / 1000}|`, [{ name: 'mj-orchestrate' }])
 
   await start($)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.select({ key: 'level', value: 'strict' })
-  await ui.select({ key: 'scope', value: 'discover' })
-  await ui.select({ key: 'scope', value: 'discover' })
+  await ui.select({ key: 'mode', value: 'strict:discover' })
+  await ui.select({ key: 'mode', value: 'strict:discover' })
   await ui.unmount()
-  expect(seen.runs).toEqual(['/mj-orchestrate strict build', '/mj-orchestrate strict discover'])
+  const mobile = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  await mobile.press({ key: 'mode-strict:discover' })
+  await mobile.unmount()
+  expect(seen.runs).toEqual(['/mj-orchestrate strict discover'])
 })
 
-test('re-picking the current level sends nothing', async ($, on) => {
-  const seen = world(on, `standard|${NOW / 1000}|`, [{ name: 'mj-orchestrate' }])
-
-  await start($)
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.select({ key: 'level', value: 'standard' })
-  await ui.unmount()
-  expect(seen.runs).toEqual([])
-})
-
-for (const wait of [61_000, 10 * 60 * 1000]) {
-  test(`a pick never expires: a pick ${wait / 1000}s later still builds on it`, async ($, on) => {
-    const seen = world(on, `standard|${NOW / 1000}|build`, [{ name: 'mj-orchestrate' }])
-
-    await start($)
-
-    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    await ui.select({ key: 'scope', value: 'discover' })
-    await seen.clock.advance(wait)
-    await ui.select({ key: 'level', value: 'strict' })
-    await ui.unmount()
-    expect(seen.runs).toEqual(['/mj-orchestrate standard discover', '/mj-orchestrate strict discover'])
-  })
-}
-
-test('a failed run drops its pick, so the same pick runs again', async ($, on) => {
-  const seen = world(on, `standard|${NOW / 1000}|build`, [])
-
-  await start($)
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.select({ key: 'level', value: 'light' })
-  await ui.select({ key: 'level', value: 'light' })
-  await ui.unmount()
-  expect(seen.runs).toEqual([])
-  expect(seen.fills).toEqual(['/mj-orchestrate light build', '/mj-orchestrate light build'])
-  expect(seen.logs.length).toBe(2)
-})
-
-test('once the file shows a pick, the next pick builds on the file', async ($, on) => {
+test('a pending pick never expires: it is shown minutes later until the file reflects it', async ($, on) => {
   const file = { v: `standard|${NOW / 1000}|build` }
   const seen = world(on, file, [{ name: 'mj-orchestrate' }])
 
   await start($)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.select({ key: 'scope', value: 'discover' })
-  file.v = `standard|${NOW / 1000}|discover`
+  await ui.select({ key: 'mode', value: 'strict:discover' })
+  await seen.clock.advance(10 * 60 * 1000)
+  expect(await valueOf(ui, 'mode')).toBe('strict:discover')
+  file.v = `strict|${NOW / 1000}|discover`
   await seen.clock.advance(3_000)
   file.v = `light|${NOW / 1000}|build`
   await seen.clock.advance(3_000)
-  await ui.select({ key: 'level', value: 'strict' })
+  expect(await valueOf(ui, 'mode')).toBe('light:build')
   await ui.unmount()
-  expect(seen.runs).toEqual(['/mj-orchestrate standard discover', '/mj-orchestrate strict build'])
+  expect(seen.runs).toEqual(['/mj-orchestrate strict discover'])
+})
+
+test('two quick picks: the second is not undone when the first lands, and each runs once', async ($, on) => {
+  const file = { v: `standard|${NOW / 1000}|build` }
+  const seen = world(on, file, [{ name: 'mj-orchestrate' }])
+
+  await start($)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.select({ key: 'mode', value: 'strict:build' })
+  await ui.select({ key: 'mode', value: 'light:discover' })
+  file.v = `strict|${NOW / 1000}|build`
+  await seen.clock.advance(3_000)
+  expect(await valueOf(ui, 'mode')).toBe('light:discover')
+  file.v = `light|${NOW / 1000}|discover`
+  await seen.clock.advance(3_000)
+  expect(await valueOf(ui, 'mode')).toBe('light:discover')
+  await ui.unmount()
+  expect(seen.runs).toEqual(['/mj-orchestrate strict build', '/mj-orchestrate light discover'])
+})
+
+test('a failed pick can be retried: the same pick runs the command again', async ($, on) => {
+  const seen = world(on, `standard|${NOW / 1000}|build`, [])
+
+  await start($)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.select({ key: 'mode', value: 'light:build' })
+  await ui.select({ key: 'mode', value: 'light:build' })
+  await ui.unmount()
+  expect(seen.runs).toEqual([])
+  expect(seen.fills).toEqual(['/mj-orchestrate light build', '/mj-orchestrate light build'])
+  expect(seen.logs.length).toBe(2)
 })
 
 test('every surface ends with the reopen hint', async ($, on) => {

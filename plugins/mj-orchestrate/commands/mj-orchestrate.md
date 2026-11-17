@@ -11,7 +11,15 @@ argument-hint: "[strict|standard|light] [discover|build] [off|status|mode] [task
 The argument is `[level] [scope] [task]`. The level (`strict|standard|light`) and the scope (`discover|build`, alias `no-code`) are each optional and, when given, are the first one or two words, in either order. The words `mode`, `scope` and `level` are labels, never tasks: alone they mean `status`, and in front of a level or scope word they are dropped (`scope discover` = `discover`). Resolve them first, then act:
 
 - **`off`, `stop`, `normal`, `normal mode`** — orchestrator mode is now OFF, and level and scope both reset. Say so in one line and return to ordinary Claude Code behaviour (work inline, no dispatch contracts, no open-delegation list) for the rest of the session. Stop reading here.
-- **`status`** — show the state, then offer a picker. Status never starts new work; only the mode changes.
+- **`status`** — report the state and stop. Status never starts new work, never opens a picker and never changes the mode.
+  1. **Show the state** in one line: whether orchestrator mode is on, **at which level and scope**, open delegations and unruled decisions, and a note if the mode file disagrees (see below).
+  2. **List the switch commands** in one more line: `/mj-orchestrate strict|standard|light`, `/mj-orchestrate discover|build`, `/mj-orchestrate off` — the side panel and the band above the prompt can switch it too.
+
+  Stop reading here.
+- **`strict` / `standard` / `light` alone** — switch the level for the rest of the session, keeping any work in flight and **the current scope** (a level switch never widens permissions). Confirm the new level in one line and say what it changes. Do not start new work.
+- **`discover` / `build` alone** (with or without a level) — switch the scope, keeping any work in flight. `discover` makes the session read-only (see "Discover scope"); `build` leaves it. Confirm in one line. Do not start new work. If the mode was off, it is now ON at **standard**.
+- **Level and/or scope + a task** — set them, then apply everything below to the task. A task that genuinely begins with the word "discover" needs `build` in front of it.
+- **empty** — show the state, then offer a picker. Nothing starts until the picker is answered; only the mode changes.
   1. **Show the state** in one line: whether orchestrator mode is on, **at which level and scope**, open delegations and unruled decisions, and a note if the mode file disagrees (see below).
   2. **Call `AskUserQuestion` once, with two single-select questions.** Every option has a one-line description taken from the Levels table and the Discover scope section.
      - Header `Level` — options in order: `strict` (plan approved before code, both judge checkpoints, every item), `standard` (S-tier rubric decides, S1 fast-path on), `light` (no contract turn, no judges, S3 refused), `off` (leave orchestrator mode, work inline).
@@ -19,12 +27,7 @@ The argument is `[level] [scope] [task]`. The level (`strict|standard|light`) an
      - Mark the current value by appending ` (current)` to its label. If the mode is off, mark `off` and `build`.
   3. **Apply the answer** with the rules of the bullets above, after stripping ` (current)`. Both answers current: change nothing and say so in one line. Level `off`: turn the mode off and ignore the scope answer (already off: change nothing). Otherwise set the chosen level and scope — a scope of `discover` turns the mode on at the chosen level, and an off mode that gets a level starts at `build`. Persist the three-field mode file with the snippet below and confirm the change in one line. A free-text "Other" answer is parsed with the argument grammar above, level and scope words only; a task in it is not started.
   4. **Fallback.** If `AskUserQuestion` is unavailable (headless or non-interactive run), stop after step 1 and list the switch commands instead: `/mj-orchestrate strict|standard|light`, `/mj-orchestrate discover|build`, `/mj-orchestrate off`.
-
-  Stop reading here.
-- **`strict` / `standard` / `light` alone** — switch the level for the rest of the session, keeping any work in flight and **the current scope** (a level switch never widens permissions). Confirm the new level in one line and say what it changes. Do not start new work.
-- **`discover` / `build` alone** (with or without a level) — switch the scope, keeping any work in flight. `discover` makes the session read-only (see "Discover scope"); `build` leaves it. Confirm in one line. Do not start new work. If the mode was off, it is now ON at **standard**.
-- **Level and/or scope + a task** — set them, then apply everything below to the task. A task that genuinely begins with the word "discover" needs `build` in front of it.
-- **empty** — run the `status` flow above exactly: show the state, open the Level/Scope picker, apply the answer, and use its fallback when `AskUserQuestion` is unavailable. Then, if the resulting mode is ON, add one line asking what to orchestrate. Do not start work. Picking `off (current)` while off keeps it off.
+  5. Then, if the resulting mode is ON, add one line asking what to orchestrate. Do not start work. Picking `off (current)` while off keeps it off.
 - **anything else** — orchestrator mode is ON at **standard / build**, and the whole argument is the first task.
 
 Say the active level in the first line of every turn while orchestrator mode is on — and `discover` beside it when that scope is active — so it is never ambiguous which rules are running.
@@ -151,6 +154,17 @@ All five carry the same hard stops: never push, never open a PR, never merge, ne
 ## Idea intake
 
 When the user drops a new idea mid-flight: acknowledge it, convert it into a delegation or an explicitly named queue item, and keep current work moving. This session does not context-switch into doing the new work itself. Ideas execute immediately only when explicitly requested; everything else sits in the queue and is re-listed at the end of every turn until closed or dropped.
+
+## Session title
+
+A hook names the session `🎛 <first words of the first task>` on the first real prompt, so a session is not left named after the `/mj-orchestrate` command. The hook acts only on a session that begins with the orchestrator; a resumed session, or one that already had a normal prompt, it leaves alone — it cannot summarise.
+
+Where the host offers a session-title tool (in the desktop app: `set_session_title` with `session_id: "self"`), set the title yourself, once, as `🎛 ` + a 3–6 word summary, batched into a turn's other calls, never as a turn of its own:
+
+- **Session that began with the orchestrator** — when the first task is taken on, summarise that task. This replaces the hook's title.
+- **Session that already had a conversation** — when orchestrator mode is turned on, summarise what the conversation so far has been about, from the context already loaded; never open the transcript file for it. This is the one thing a mode switch may do besides switching.
+
+Where no such tool exists, skip it silently — the hook's title, or the host's own, stands. Once per session: if you can see you already set it, leave it; after a resume or a compaction, look up the current title first (in the desktop app: `get_session` with `self`) and leave one that already starts with `🎛`. Re-title only when the user asks or the session's scope has clearly changed; never fight a title the user typed (the host asks for approval in that case — do not retry if declined). A subagent never renames the session. `status` and `off` never title, and neither does a mode switch in a session with no conversation yet — there is nothing to summarise.
 
 ## Kept sessions
 
