@@ -8,6 +8,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/orchestrator-mode-reset.sh\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/orchestrator-session-title.sh\"",
+            "timeout": 5
           }
         ]
       }
@@ -30,6 +35,11 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/orchestrator-mode-inject.sh\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/orchestrator-session-title.sh\"",
             "timeout": 5
           }
         ]

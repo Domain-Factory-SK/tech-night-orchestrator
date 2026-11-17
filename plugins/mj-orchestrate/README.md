@@ -23,9 +23,10 @@ ends at `/mj-orchestrate off` or when the session ends.
 | `scripts/worktree-for.sh` | Creates a fresh worktree at an exact target ref and preflights it |
 | `scripts/checkout-preflight.sh` | Refuses a stale, dirty, or main checkout before any file is read |
 | `hooks/orchestrator-mode-reset.sh` | Resets this session's mode flag at session start (not on compaction); tested by `tests/orchestrator-mode-reset.test.sh` |
+| `hooks/orchestrator-session-title.sh` | `UserPromptSubmit` hook that names the session `🎛 <task>` from the first real prompt, once per session (marker `~/.claude/.orchestrator-title.<session_id>`), so a first message of just `/mj-orchestrate standard build` does not name the session after the command; only a session that begins with the orchestrator is titled — a resumed session or one that already had a normal prompt is left alone (the hook writes a `-` marker for it); pure mode switches and other slash commands never title, an ordinary prompt titles only while the mode is on; wired on both `UserPromptSubmit` and `SessionStart` (which never prints, and only marks `resume`/`compact` sessions); needs `jq` for prompts, fails open; tested by `tests/orchestrator-session-title.test.sh`; a session that already had a conversation is instead named by the orchestrator itself when the mode is turned on, with a short summary of the conversation so far (where the host offers a session-title tool) |
 | `hooks/orchestrator-discover-guard.sh` | Optional `PreToolUse` backstop that blocks repo writes while the `discover` scope is on |
-| `hooks/orch-band.tsx` | Function-hooks module: an always-visible band above the prompt (`🎛 orch <level> · 🔨 build`), drawn in the terminal and the desktop app — reads the same mode flag as the status line, refreshed every 3s; a button — click it (or `o` with the band focused) to run `/mj-orchestrate status`; a second small `▣` button (or `p`) opens the side panel directly, running no command and typing nothing into the prompt; tested by `tests/orch-band.test.tsx` |
-| `hooks/orch-panel.tsx` | Function-hooks module: an `Orchestrator` side panel (opens at session start; closed it? click the `▣` button in the band, or run `/mj-orchestrate-panel`) showing the level and scope, with Level and Scope pickers (Buttons on mobile) and a Status button; every change runs `/mj-orchestrate <level> <scope>`, never writes the mode file, so the discover guard stays in step with the conversation; tested by `tests/orch-panel.test.tsx` |
+| `hooks/orch-band.tsx` | Function-hooks module: an always-visible band above the prompt (`🎛 orch <level> · 🔨 build`), drawn in the terminal and the desktop app — reads the same mode flag as the status line, refreshed every 3s; a dropdown of the seven level and scope combinations (`strict · build` … `off`) that applies a pick on selection with one `/mj-orchestrate <level> <scope>` run (or `off`) — no Go button; picking the mode already in force runs nothing, and a pick stays shown until the mode file reflects it (or returns to the file's value if the run fails); the pick is shared with the side panel; where a surface draws no dropdown (mobile) the band is the label and the `▣` button; a small `▣` button (or `p`) opens the side panel directly, running no command and typing nothing into the prompt; tested by `tests/orch-band.test.tsx` |
+| `hooks/orch-panel.tsx` | Function-hooks module: an `Orchestrator` side panel (opens on request only, never at session start: click the `▣` button in the band, or run `/mj-orchestrate-panel`) showing the level and scope, with the same single seven-option dropdown as the band (seven Buttons on mobile, the current one primary) that applies a pick on selection with one `/mj-orchestrate <level> <scope>` run (or `off`), no Go button; the pane has no Status button, and never writes the mode file, so the discover guard stays in step with the conversation; tested by `tests/orch-panel.test.tsx` |
 | `hooks/orch-modules.tsx` | The single hooks module `hooks.json` loads (the engine allows one per plugin): it registers the band and the panel |
 
 ## Levels
@@ -40,13 +41,14 @@ changes the hard stops, only how much is checked.
 - **`light`** — no contract turn, no judges. S3 items are refused rather than
   run light.
 
-`/mj-orchestrate status` reports the state (on/off, level, scope, open
-delegations and unruled decisions), then opens a picker for level and scope so
-you never have to remember the mode names. The current values are marked
-"(current)"; picking them changes nothing. In a non-interactive run it stops
-after the report and lists the switch commands instead. A bare
-`/mj-orchestrate` with no argument does the same, then asks what to
-orchestrate if the mode is on.
+`/mj-orchestrate status` only reports the state (on/off, level, scope, open
+delegations and unruled decisions) and lists the switch commands; it never
+opens a picker or changes the mode. A bare `/mj-orchestrate` with no argument
+shows the state, then opens a picker for level and scope so you never have to
+remember the mode names. The current values are marked "(current)"; picking
+them changes nothing. In a non-interactive run it stops after the report and
+lists the switch commands instead. It then asks what to orchestrate if the mode
+is on. The band dropdown and the side panel switch the mode too: picking an option applies it at once.
 
 ## Discover scope
 
@@ -85,8 +87,10 @@ worst case is slower work. Deploying, releasing and creating tickets cannot.
 
 ## Wiring
 
-The plugin registers its two hooks itself (`hooks/hooks.json`): the
-session-start reset and the discover guard, described under 3 and 4 below.
+The plugin registers its hooks itself (`hooks/hooks.json`): the
+session-start reset and the discover guard, described under 3 and 4 below, the
+prompt-time mode injection, and the session-title hook that names the session
+after its first orchestrated task instead of the command.
 The same file loads `hooks/orch-band.tsx`, the band above the prompt that
 shows the mode where no status line is drawn (the desktop app), and
 `hooks/orch-panel.tsx`, the side panel with level and scope toggles; the

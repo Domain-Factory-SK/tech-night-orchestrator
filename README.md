@@ -19,11 +19,11 @@ mode only applies once `/mj-orchestrate` is invoked.
 
 | Command | What it does |
 |---|---|
-| `/mj-orchestrate [strict\|standard\|light] [discover] [task]` | Turns orchestrator mode on, sets the level and scope, or reports status; `off` ends it |
+| `/mj-orchestrate [strict\|standard\|light] [discover\|build] [task]` | Turns orchestrator mode on, sets the level and scope, or reports status; `off` ends it |
 | `/mj-session-review` | Reports what a session actually did and proposes memory changes (proposes only, writes nothing until approved) |
 | `/mj-keep [personal\|work] [name]` | Archives the current session to a local profile folder |
 | `/mj-recall [personal\|work] [question]` | Searches the kept sessions, cites what was said, and can restore one for resuming |
-| `/mj-orchestrate-panel` | Reopens the side panel that shows the level and scope |
+| `/mj-orchestrate-panel` | Opens the side panel that shows the level and scope and switches them |
 
 ## More
 
